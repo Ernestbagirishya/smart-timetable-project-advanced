@@ -1,0 +1,273 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                Int       @id @default(autoincrement())
+  username          String    @unique
+  password          String
+  fullName          String
+  email             String    @unique
+  registrationNumber String?   @unique
+  role              Role      @default(STUDENT)
+  department        Department? @relation(fields: [departmentId], references: [id])
+  departmentId      Int?
+  class             Class?     @relation(fields: [classId], references: [id])
+  classId           Int?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // A User can be assigned as an HOD of one Department
+  headedDepartment Department? @relation("DepartmentHead")
+
+  // A User (Lecturer) can be assigned to many courses
+  taughtCourses CourseAssignment[]
+
+  // A User (Lecturer) belongs to a Department
+  lecturerDepartment Department? @relation("LecturersInDepartment", fields: [lecturerDepartmentId], references: [id])
+  lecturerDepartmentId Int?
+
+  // A User (Student) belongs to a Department
+  studentDepartment Department? @relation("StudentsInDepartment", fields: [studentDepartmentId], references: [id])
+  studentDepartmentId Int?
+
+  // A User (Lecturer) has many sessions in the timetable
+  sessions Session[]
+
+  // Add these relations:
+  catPlans      CATPlan[]       // For lecturers who create CAT plans
+  specialCases  SpecialCase[]   // For students who submit special cases
+  resources     Resource[]
+
+  @@map("users")
+}
+
+enum Role {
+  TIMETABLE_MANAGER
+  HOD
+  LECTURER
+  STUDENT
+}
+
+enum DepartmentType {
+  PUBLIC
+  PRIVATE
+}
+
+model Department {
+  id             Int            @id @default(autoincrement())
+  name           String         @unique
+  code           String         @unique
+  departmentType DepartmentType @default(PRIVATE)
+  hod            User?          @relation("DepartmentHead", fields: [hodId], references: [id])
+  hodId          Int?           @unique
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  classes   Class[]
+  courses   Course[]
+  lecturers User[]   @relation("LecturersInDepartment")
+  students  User[]   @relation("StudentsInDepartment")
+  User      User[]
+
+  @@map("departments")
+}
+
+model Class {
+  id           Int        @id @default(autoincrement())
+  name         String
+  year         Int
+  department   Department @relation(fields: [departmentId], references: [id])
+  departmentId Int
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  students          User[]
+  courses           Course[]           @relation("CoursesInClass")
+  courseAssignments CourseAssignment[]
+  sessions          Session[]
+  catPlans      CATPlan[]  // Add this line
+  resources     Resource[]
+
+  @@map("classes")
+}
+
+model Course {
+  id           Int        @id @default(autoincrement())
+  courseCode   String     @unique
+  courseName   String
+  credits      Int
+  type         CourseType @default(CORE)
+  department   Department @relation(fields: [departmentId], references: [id])
+  departmentId Int
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  classes     Class[]            @relation("CoursesInClass")
+  assignments CourseAssignment[]
+  sessions    Session[]
+  catPlans     CATPlan[]  // Add this line
+  specialCases SpecialCase[]  // Add this line
+  resources     Resource[]
+
+  @@map("courses")
+}
+
+enum CourseType {
+  CORE
+  GENERAL
+}
+
+model CourseAssignment {
+  id         Int    @id @default(autoincrement())
+  course     Course @relation(fields: [courseId], references: [id])
+  courseId   Int
+  lecturer   User   @relation(fields: [lecturerId], references: [id])
+  lecturerId Int
+  class      Class  @relation(fields: [classId], references: [id])
+  classId    Int
+
+  @@unique([courseId, lecturerId, classId])
+  @@map("course_assignments")
+}
+
+model Room {
+  id       Int       @id @default(autoincrement())
+  roomId   String    @unique
+  roomName String
+  sessions Session[]
+
+  @@map("rooms")
+}
+
+model TimeSlot {
+  id        Int       @id @default(autoincrement())
+  name      String    @unique
+  startTime DateTime
+  endTime   DateTime
+  sessions  Session[]
+
+  @@map("time_slots")
+}
+
+model Round {
+  id        Int       @id @default(autoincrement())
+  name      String    @unique
+  startDate DateTime
+  endDate   DateTime
+  isActive  Boolean   @default(false)
+  sessions  Session[]
+
+  @@map("rounds")
+}
+
+model CATPlan {
+  id          Int      @id @default(autoincrement())
+  course      Course   @relation(fields: [courseId], references: [id])
+  courseId    Int
+  class       Class    @relation(fields: [classId], references: [id])
+  classId     Int
+  lecturer    User     @relation(fields: [lecturerId], references: [id])
+  lecturerId  Int
+  title       String
+  description String?
+  maxMarks    Int
+  dueDate     DateTime
+  status      CatStatus @default(PENDING)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("cat_plans")
+}
+
+model SpecialCase {
+  id          Int           @id @default(autoincrement())
+  student     User          @relation(fields: [studentId], references: [id])
+  studentId   Int
+  course      Course        @relation(fields: [courseId], references: [id])
+  courseId    Int
+  type        CaseType
+  description String
+  evidence    String?
+  status      CaseStatus    @default(PENDING)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@map("special_cases")
+}
+
+enum CatStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum CaseType {
+  RETAKE
+  SPECIAL
+  REASSESSMENT
+}
+
+enum CaseStatus {
+  PENDING
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+}
+
+model Session {
+  id         Int      @id @default(autoincrement())
+  dayOfWeek  Int
+  round      Round    @relation(fields: [roundId], references: [id])
+  roundId    Int
+  timeSlot   TimeSlot @relation(fields: [timeSlotId], references: [id])
+  timeSlotId Int
+  course     Course   @relation(fields: [courseId], references: [id])
+  courseId   Int
+  lecturer   User     @relation(fields: [lecturerId], references: [id])
+  lecturerId Int
+  class      Class    @relation(fields: [classId], references: [id])
+  classId    Int
+  room       Room     @relation(fields: [roomId], references: [id])
+  roomId     Int
+
+  @@unique([roundId, timeSlotId, roomId])
+  @@unique([roundId, timeSlotId, lecturerId])
+  @@unique([roundId, classId, timeSlotId, dayOfWeek])
+  @@map("sessions")
+}
+
+
+model Resource {
+  id          Int        @id @default(autoincrement())
+  course      Course     @relation(fields: [courseId], references: [id])
+  courseId    Int
+  class       Class      @relation(fields: [classId], references: [id])
+  classId     Int
+  lecturer    User       @relation(fields: [lecturerId], references: [id])
+  lecturerId  Int
+  title       String
+  description String?
+  fileUrl     String
+  fileType    ResourceType
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@map("resources")
+}
+
+enum ResourceType {
+  PDF
+  DOCUMENT
+  SLIDES
+  VIDEO
+  OTHER
+}
+
+
